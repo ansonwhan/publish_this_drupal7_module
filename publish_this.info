@@ -1,0 +1,10 @@
+name = Publish This
+description = Parses publishThis JSON feeds and writes it to the database.
+core = 7.x
+configure = admin/config/services/publish_this
+
+files[] = publish_this.module
+files[] = publish_this.install
+
+stylesheets[all][] = publish_this.css
+scripts[] = publish_this.js

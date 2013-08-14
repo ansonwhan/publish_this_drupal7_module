@@ -1,0 +1,847 @@
+<?php
+
+global $feedID_description, $feedLabel_description, $feedCat_description, $feedFreq_description;
+$feedLabel_description = 'A descriptive name for the feed, so that you can identify it and manage it later. [please avoid using the ampersand (&) sign]';
+$feedID_description = 'The unique feed ID from PublishThis.';
+$feedCat_description = 'The category to assign all articles transferred via this feed.';
+$feedFreq_description = 'The number of hours between JSON synchronization calls.';
+
+/**
+ * Implements hook_help.
+ *
+ * Displays help and module information.
+ *
+ * @param path
+ *   Which path of the site we're using to display help
+ * @param arg
+ *   Array that holds the current path as returned from arg() function
+ */
+function publish_this_help($path, $arg) {
+  switch ($path) {
+    case "admin/help#publish_this":
+      return '<p>' . t("Parses PublishThis JSON feeds and writes it to the database.") . '</p>';
+      break;
+    default:
+      break;
+  }
+} /* end function publish_this_help */
+
+
+
+/**
+ * Implements hook_menu().
+ */
+function publish_this_menu() {
+  $items = array();
+  $items['admin/config/services/publish_this'] = array(
+    'title' => 'PublishThis',
+    'description' => 'Configuration for PublishThis module',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('publish_this_globalSettings_form'),
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+  /* parent menu item, defaults to existing feeds page*/
+  $items['admin/structure/publish_this_feeds'] = array(
+    'title' => 'PublishThis Feeds',
+    'description' => 'Configuration for PublishThis module',
+    'page callback' => 'system_admin_menu_block_page',
+    'page arguments' => array('publish_this_form'),
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'system.admin.inc',
+    'file path' => drupal_get_path('module', 'system'),
+  );
+
+  /* page to display existing feeds */
+  $items['admin/structure/publish_this_feeds/manage_edit_page'] = array(
+    'title' => ' Manage/List Feeds',
+    'description' => 'Manage Feeds already setup in the Drupal import queue.',
+    'page callback' => 'publish_this_page',
+    'page arguments' => array('1'),
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  /* add a new feed form */
+  $items['admin/structure/publish_this_feeds/add_new_feed'] = array(
+    'title' => ' Add new feed',
+    'description' => 'Add new feed to the import queue in Drupal (requires that a feed be setup in PublishThis and you have its ID).',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('publish_this_addFeed_form'),
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  /* edit a feed form */
+  $items['admin/structure/publish_this_feeds/edit_feed'] = array(
+    'title' => ' Edit feed',
+    'description' => 'Edit an existing feed in the Drupal import queue.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('publish_this_editFeed_form'),
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  /* delete feed form */
+  $items['admin/structure/publish_this_feeds/delete_feed'] = array(
+    'title' => ' Delete feed',
+    'description' => 'Delete an existing feed from the import queue in Drupal.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('publish_this_deleteFeed_form'),
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  $items['admin/structure/publish_this_feeds/curate_manage_publish_this'] = array(
+    'title' => 'Curate & Manage via PublishThis',
+    'description' => 'Manage feeds in PublishThis so that they can be added to the Drupal import queue.',
+    'page callback' => 'publish_this_page',
+    'page arguments' => array('2'),
+    'access arguments' => array('access publish_this content'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+ /*
+  $items['publish_this_feeds'] = array(
+    'title' => 'PublishThis feeds',
+    'page callback' => '_publish_this_feeds_page',
+    'access arguments' => array('access publish_this_feeds content'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+*/
+  return $items;
+} /* end function publish_this_menu */
+
+
+
+
+
+
+
+//******************** API Management Form submission *********************************//
+
+
+/**
+ * Page callback: PublishThis Global settings
+ * @see publish_this_menu()
+ * http://webapi.publishthis.com/rest/feeds/{feedId}/custom-data/?token={your api token}
+ */
+function publish_this_globalSettings_form($form, &$form_state) {
+  $form['general'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Feed settings'),
+  );
+  $form['general']['publish_this_prefix'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Prefix for Custom Content Feed'),
+    '#default_value' => variable_get('publish_this_prefix', 'http://webapi.publishthis.com/rest/feeds/'),
+    '#size' => '60',
+    '#maxlength' => '128',
+    '#required' => TRUE,
+    '#description' => 'PublishThis JSON feeds have urls that follow a fixed pattern. Provide the fixed absolute url substring up to the {FEED ID}.',
+  );
+  $form['general']['publish_this_suffix'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Suffix for Custom Content Feed'),
+    '#default_value' => variable_get('publish_this_suffix', '/custom-data/?token='),
+    '#size' => '60',
+    '#maxlength' => '128',
+    '#required' => TRUE,
+    '#description' => 'PublishThis JSON feeds have urls that follow a fixed pattern. Provide the trailing substring of the fixed absolute url between the {FEED ID} and {API TOKEN}',
+  );
+
+  $form['general']['publish_this_prefix_curated'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Prefix for Curated Feed'),
+    '#default_value' => variable_get('publish_this_prefix_curated', 'http://webapi.publishthis.com/rest/content/curated/feed/'),
+    '#size' => '60',
+    '#maxlength' => '128',
+    '#required' => TRUE,
+    '#description' => 'PublishThis JSON feeds have urls that follow a fixed pattern. Provide the fixed absolute url substring up to the {FEED ID}.',
+  );
+  $form['general']['publish_this_suffix_curated'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Suffix for Curated Feed'),
+    '#default_value' => variable_get('publish_this_suffix_curated', '?token='),
+    '#size' => '60',
+    '#maxlength' => '128',
+    '#required' => TRUE,
+    '#description' => 'PublishThis JSON feeds have urls that follow a fixed pattern. Provide the trailing substring of the fixed absolute url between the {FEED ID} and {API TOKEN}',
+  );
+
+  $form['general']['publish_this_prefix_automated'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Prefix for Automated Feed'),
+    '#default_value' => variable_get('publish_this_prefix_automated', 'http://webapi.publishthis.com/rest/content/automated/feed/'),
+    '#size' => '60',
+    '#maxlength' => '128',
+    '#required' => TRUE,
+    '#description' => 'PublishThis JSON feeds have urls that follow a fixed pattern. Provide the fixed absolute url substring up to the {FEED ID}.',
+  );
+  $form['general']['publish_this_suffix_automated'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Suffix for Automated Feed'),
+    '#default_value' => variable_get('publish_this_suffix_automated', '?token='),
+    '#size' => '60',
+    '#maxlength' => '128',
+    '#required' => TRUE,
+    '#description' => 'PublishThis JSON feeds have urls that follow a fixed pattern. Provide the trailing substring of the fixed absolute url between the {FEED ID} and {API TOKEN}',
+  );
+
+
+  $form['general']['publish_this_api_key'] = array(
+    '#type' => 'textfield',
+    '#title' => t('API Token/Key for your Domain'),
+    '#default_value' => variable_get('publish_this_api_key', 'api key'),
+    '#size' => '60',
+    '#maxlength' => '128',
+    '#required' => TRUE,
+    '#description' => 'Provide your PublishThis API Token/Key. This is unique per domain, and can be obtained by a PublishThis administrator when he/she first signs into an account on PublishThis.',
+  );
+  $vocabularies = publish_this_get_vocabularies();
+  $form['general']['publish_this_taxonomy'] = array(
+    '#type' => 'select',
+    '#title' => t('Taxonomy that contains your categories'),
+    '#description' => 'Select the taxonomy/vocabulary that contains the categories to which you want to map imported posts.',
+    '#required' => TRUE,
+    '#default_value' => variable_get('publish_this_taxonomy'),
+    '#options' => $vocabularies,
+  );
+
+  return system_settings_form($form);
+} /* end function publish_this_globalSettings_form */
+
+
+
+
+//********************* Feeds Management Form *****************************************//
+
+/**
+ * Page callback: PublishThis individual feed setup form
+ * @see publish_this_feeds_menu()
+ */
+function publish_this_addFeed_form($form, &$form_state) {
+  global $feedLabel_description, $feedID_description, $feedCat_description, $feedFreq_description;
+  $form['general'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('PublishThis Feed settings'),
+  );
+  $form['general']['publish_this_name'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Name'),
+    '#size' => '60',
+    '#maxlength' => '128',
+    '#required' => TRUE,
+    '#description' => $feedLabel_description,
+  );
+  $form['general']['publish_this_feed_id'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Feed ID'),
+    '#size' => '60',
+    '#maxlength' => '128',
+    '#required' => TRUE,
+    '#description' => $feedID_description,
+  );
+  $categories = publish_this_get_categories();
+  $form['general']['publish_this_category'] = array(
+    '#type' => 'select',
+    '#title' => t('Category'),
+    '#description' => $feedCat_description,
+    '#options' => $categories,
+    '#required' => TRUE,
+  );
+  $form['general']['publish_this_content_custom'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Custom Content'),
+    '#description' => 'Check to enable PublishThis custom content import for this feed.',
+    '#return_value' => TRUE,
+  );
+  $form['general']['publish_this_content_curated'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Curated Content'),
+    '#description' => 'Check to enable PublishThis curated content import for this feed.',
+    '#return_value' => TRUE,
+  );
+  $form['general']['publish_this_content_automated'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Automated Content'),
+    '#description' => 'Check to enable PublishThis automated content import for this feed.',
+    '#return_value' => TRUE,
+  );
+  $form['general']['publish_this_frequency'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Update frequency (in hrs)'),
+    '#size' => '60',
+    '#maxlength' => '128',
+    '#required' => TRUE,
+    '#description' => $feedFreq_description,
+  );
+  $form['general']['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save Feed'),
+  );
+  return $form;
+} /* end function publish_this_addFeed_form */
+
+
+/**
+ * Implements hook_form_validate().
+ */
+function publish_this_addFeed_form_validate($form, &$form_state) {
+} /* end function publish_this_addFeed_form_validate */
+
+
+/**
+ * Implements hook_form_submit().
+ */
+function publish_this_addFeed_form_submit($form, &$form_state) {
+  $name = $form_state['values']['publish_this_name'];
+  $feedID = $form_state['values']['publish_this_feed_id'];
+  $cat = $form_state['values']['publish_this_category'];
+  $custom = $form_state['values']['publish_this_content_custom'];
+  $curated = $form_state['values']['publish_this_content_curated'];
+  $automated = $form_state['values']['publish_this_content_automated'];
+  $freq = $form_state['values']['publish_this_frequency'];
+  $insertionFlag = publish_this_add_feed($name,$feedID,$cat,$custom,$curated,$automated,$freq);
+  return $insertionFlag;
+} /* end function publish_this_addFeed_form_submit */
+
+
+
+
+
+/**
+ * Page callback: PublishThis individual feed edit form
+ * @see publish_this_feeds_menu()
+ */
+function publish_this_editFeed_form($form, &$form_state) {
+  global $feedLabel_description, $feedID_description, $feedCat_description, $feedFreq_description;
+  $form['general'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('PublishThis Feed settings'),
+  );
+  $form['general']['publish_this_name'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Name'),
+    '#size' => '60',
+    '#maxlength' => '128',
+    '#required' => TRUE,
+    '#default_value' => isset($_POST['feedLabel']) ? $_POST['feedLabel'] : '',
+    '#description' => $feedLabel_description,
+  );
+  $form['general']['publish_this_feed_id'] = array(
+    '#type' => 'hidden',
+    '#title' => t('Feed ID'),
+    '#size' => '60',
+    '#maxlength' => '128',
+    '#required' => TRUE,
+    '#default_value' => isset($_POST['feedID']) ? $_POST['feedID'] : '',
+    '#description' => $feedID_description,
+  );
+  $categories = publish_this_get_categories();
+  $form['general']['publish_this_category'] = array(
+    '#type' => 'select',
+    '#title' => t('Category'),
+    '#description' => $feedCat_description,
+    '#options' => $categories,
+    '#default_value' => isset($_POST['feedCat']) ? $_POST['feedCat'] : '',
+    '#required' => TRUE,
+  );
+  $form['general']['publish_this_content_custom'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Custom Content'),
+    '#description' => 'Check to enable PublishThis custom content import for this feed.',
+    '#default_value' => isset($_POST['feedCustom']) ? $_POST['feedCustom'] : '',
+  );
+  $form['general']['publish_this_content_curated'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Curated Content'),
+    '#description' => 'Check to enable PublishThis curated content import for this feed.',
+    '#default_value' => isset($_POST['feedCurated']) ? $_POST['feedCurated'] : '',
+  );
+  $form['general']['publish_this_content_automated'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Automated Content'),
+    '#description' => 'Check to enable PublishThis automated content import for this feed.',
+    '#default_value' => isset($_POST['feedAutomated']) ? $_POST['feedAutomated'] : '',
+  );
+  $form['general']['publish_this_frequency'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Update frequency (in hrs)'),
+    '#size' => '60',
+    '#maxlength' => '128',
+    '#required' => TRUE,
+    '#default_value' => isset($_POST['feedFreq']) ? $_POST['feedFreq'] : '',
+    '#description' => $feedFreq_description,
+  );
+  $form['general']['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save Updated Information for this Feed'),
+  );
+  return $form;
+} /* end function publish_this_editFeed_form */
+
+
+/**
+ * Implements hook_form_validate().
+ */
+function publish_this_editFeed_form_validate($form, &$form_state) {
+} /* end function publish_this_editFeed_form_validate */
+
+
+/**
+ * Implements hook_form_submit().
+ */
+function publish_this_editFeed_form_submit($form, &$form_state) {
+  $name = $form_state['values']['publish_this_name'];
+  $feedID = $form_state['values']['publish_this_feed_id'];
+  $cat = $form_state['values']['publish_this_category'];
+  $custom = $form_state['values']['publish_this_content_custom'];
+  $curated = $form_state['values']['publish_this_content_curated'];
+  $automated = $form_state['values']['publish_this_content_automated'];
+  $freq = $form_state['values']['publish_this_frequency'];
+  $updateFlag = publish_this_update_feed($name,$feedID,$cat,$custom,$curated,$automated,$freq);
+  return $updateFlag;
+} /* end function publish_this_editFeed_form_submit */
+
+
+
+//********************* Feed Record Deletion Form *******************************************//
+
+/**
+ * Page callback: PublishThis individual feed setup form
+ * @see publish_this_feeds_menu()
+ */
+function publish_this_deleteFeed_form($form, &$form_state) {
+  global $feedLabel_description, $feedID_description, $feedCat_description, $feedFreq_description;
+
+  $form['general'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Confirm Deletion of PublishThis Feed'),
+    '#description' => 'Please confirm you really want to delete the feed identified below. Once deleted in Drupal, you will have to add it again to continue importing articles from that feed. Note, this does not impact any existing content that was imported from this feed; all that content will remain published on the site.'
+  );
+  $form['general']['publish_this_name'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Name'),
+    '#size' => '60',
+    '#maxlength' => '128',
+    '#required' => TRUE,
+    '#default_value' => isset($_POST['feedLabel']) ? $_POST['feedLabel'] : '',
+    '#description' => $feedLabel_description,
+  );
+  $form['general']['publish_this_feed_id'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Feed ID'),
+    '#size' => '60',
+    '#maxlength' => '128',
+    '#required' => TRUE,
+    '#default_value' => isset($_POST['feedID']) ? $_POST['feedID'] : '',
+    '#description' => $feedID_description,
+  );
+  $form['general']['publish_this_category'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Category'),
+    '#description' => $feedCat_description,
+    '#default_value' => isset($_POST['feedCat']) ? $_POST['feedCat'] : '',
+    '#required' => TRUE,
+  );
+  $form['general']['publish_this_content_custom'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Custom Content'),
+    '#description' => 'Check to enable PublishThis custom content import for this feed.',
+    '#default_value' => isset($_POST['feedCustom']) ? $_POST['feedCustom'] : '',
+  );
+  $form['general']['publish_this_content_curated'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Curated Content'),
+    '#description' => 'Check to enable PublishThis curated content import for this feed.',
+    '#default_value' => isset($_POST['feedCurated']) ? $_POST['feedCurated'] : '',
+  );
+  $form['general']['publish_this_content_automated'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Automated Content'),
+    '#description' => 'Check to enable PublishThis automated content import for this feed.',
+    '#default_value' => isset($_POST['feedAutomated']) ? $_POST['feedAutomated'] : '',
+  );
+  $form['general']['publish_this_frequency'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Update frequency (in hrs)'),
+    '#size' => '60',
+    '#maxlength' => '128',
+    '#required' => TRUE,
+    '#default_value' => isset($_POST['feedFreq']) ? $_POST['feedFreq'] : '',
+    '#description' => $feedFreq_description,
+  );
+  $form['general']['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Confirm & Delete Feed'),
+  );
+  return $form;
+} /* end function publish_this_deleteFeed_form */
+
+/**
+ * Implements hook_form_validate().
+ */
+function publish_this_deleteFeed_form_validate($form, &$form_state) {
+} /* end function publish_this_deleteFeed_form_validate */
+
+
+/**
+ * Implements hook_form_submit().
+ */
+function publish_this_deleteFeed_form_submit($form, &$form_state) {
+  $feedID = $form_state['values']['publish_this_feed_id'];
+  $deletionFlag = publish_this_delete_feed($feedID);
+  return $deletionFlag;
+} /* end function publish_this_deleteFeed_form_submit */
+
+
+
+
+
+/**
+ * Implements hook_form_alter().
+ */
+function publish_this_form_alter(&$form, &$form_state, $form_id) {
+  watchdog('publish_this', t('hook form alter called by form with id: %formID'), $variables = array('%formID' => $form_id), $severity = WATCHDOG_INFO, $link = NULL);
+  switch($form_id) {
+    case 'publish_this_deleteFeed_form':
+      $form['#submit'][] = 'publish_this_editFeed_form_submit_handler';
+      break;
+    case 'publish_this_addFeed_form':
+      $form['#submit'][] = 'publish_this_editFeed_form_submit_handler';
+      break;
+    case 'publish_this_editFeed_form':
+      $form['#submit'][] = 'publish_this_editFeed_form_submit_handler';
+      break;
+
+    default:
+      break;
+ }
+}
+
+/**
+ * Custom form_submit_handler().
+ */
+function publish_this_editFeed_form_submit_handler(&$form, &$form_state) {
+  $form_state['redirect'] = 'admin/structure/publish_this_feeds/manage_edit_page';
+}
+
+//********************* Feeds Management Display *******************************************//
+
+/*
+*  Implements hook_page, used for page callback
+*/
+function publish_this_page($case) {
+  $output = "";
+  switch ($case) {
+    case 1:
+      /* internal page to render all the feeds in the database */
+      $output = publish_this_list_feeds();
+      break;
+    case 2:
+      /* internal page to render custom help documentation for curating/managing content on PublishThis */
+      $output = '<h1>Curate and Manage PublishThis Content</h1>'
+              . '<p>custom help documentation for curating/managing content on PublishThis</p>'
+              . '<p>You can manage and curate content within PublishThis using the iframe embedded page below or visit the <a href="https://manager.publishthis.com" target="_blank">PublishThis site in a separate window</a>.</p>'
+              . '<iframe class="publishThisEmbed" src="https://manager.publishthis.com"></iframe>'
+              ;
+      break;
+    default:
+      break;
+  }
+  return $output;
+} /* end function publish_this_page */
+
+
+/**
+ * Implements hook_block_info().
+ */
+function publish_this_block_info() {
+  $blocks['publish_this_feeds'] = array(
+    // The name that will appear in the block list.
+    'info' => t('PublishThis Feed Management'),
+    // Default setting.
+    'cache' => DRUPAL_CACHE_PER_ROLE,
+  );
+  return $blocks;
+} /* end function publish_this_block_info */
+
+
+
+
+/*---
+function publish_this_block_view($delta = '') {
+  switch ($delta) {
+    case 'publish_this_feeds':
+      $block['subject'] = t('PublishThis Feed Management Block');
+      $formattedResults = publish_this_theme() ;
+    }
+}
+--*/
+/**
+* @function Implementation of hook_theme()
+*/
+/*--
+function publish_this_theme() {
+  return array(
+    'publish_this_feeds' => array(
+      'arguments' => array('type'=>NULL),
+    ),
+  );
+}
+--*/
+
+
+
+/**
+ * Custom publish_this feeds listing for rendering.
+ * @return: A result set of the feeds
+ */
+function publish_this_list_feeds() {
+  $output = "";
+  $formattedResults = "<p>Below is a list of all <em>PublishThis</em> feeds that have been setup in Drupal for importing.
+    <ul>
+      <li>Click on the <strong>edit link</strong> to change the name/description, the category assigned, or enable/disable types of feed imports.</li>
+      <li>Click the <strong>delete link</strong> to remove a feed permanently from importing into Drupal. <em><strong>Note</strong>: actual content curation and management should be done on the PublishThis website.</em></li>
+      <li>Click <a href = '/admin/structure/publish_this_feeds/add_new_feed'>here to add</a> a new PublishThis feed into Drupal's import queue.</li>
+    </ul>
+  </p>";
+  $formattedResults .= "<table><tr><th>Feed ID</th><th>Name/Description</th><th>Category</th><th>Sync Frequency</th><th>Enabled JSON feeds<br/><span style='text-transform:none;'>Click URL</span><span style='text-transform:lowercase;'> to preview live JSON feed</span></th><th>Last Modified</th>";
+  $empty_value = $formattedResults;
+
+  $apiKey = publish_this_get_settings('publish_this_api_key');
+  $prefix = publish_this_get_settings('publish_this_prefix');
+  $suffix = publish_this_get_settings('publish_this_suffix');
+
+  $prefix_curated = publish_this_get_settings('publish_this_prefix_curated');
+  $suffix_curated = publish_this_get_settings('publish_this_suffix_curated');
+
+  $prefix_automated = publish_this_get_settings('publish_this_prefix_automated');
+  $suffix_automated = publish_this_get_settings('publish_this_suffix_automated');
+
+  if (user_access('access content')) {
+    $results = publish_this_get_feeds();
+    $i = 0;
+    foreach ($results as $result) {
+      $name = $result->publish_this_name;
+      $feedID = $result->publish_this_feed_id;
+      $tid = $result->publish_this_category;
+      $term = taxonomy_term_load($tid);
+      $category = $term->name;
+      $customContent = $result->bool_content_custom;
+      $curatedContent = $result->bool_content_curated;
+      $automatedContent = $result->bool_content_automated;
+      $freq = $result->sync_frequency;
+      $lastModified = $result->last_modified;
+
+      $formattedResults .= '<tr class="feed-wrapper">';
+      $formattedResults .= '<td>' . $feedID . '<br/>
+      <form method="post" action="edit_feed" class="publishThisFormLink">
+      <input type="hidden" name="feedLabel" value="' . $name . '" />
+      <input type="hidden" name="feedID" value="' . $feedID . '" />
+      <input type="hidden" name="feedCat" value="' . $tid . '" />
+      <input type="hidden" name="feedCustom" value="' . $customContent . '" />
+      <input type="hidden" name="feedCurated" value="' . $curatedContent . '" />
+      <input type="hidden" name="feedAutomated" value="' . $automatedContent . '" />
+      <input type="hidden" name="feedFreq" value="' . $freq . '" />
+      <input type="submit" value="Edit" />
+      </form><br/>
+      <form method="post" action="delete_feed" class="publishThisFormLink">
+      <input type="hidden" name="feedLabel" value="' . $name . '" />
+      <input type="hidden" name="feedID" value="' . $feedID . '" />
+      <input type="hidden" name="feedCat" value="' . $tid . '" />
+      <input type="hidden" name="feedCustom" value="' . $customContent . '" />
+      <input type="hidden" name="feedCurated" value="' . $curatedContent . '" />
+      <input type="hidden" name="feedAutomated" value="' . $automatedContent . '" />
+      <input type="hidden" name="feedFreq" value="' . $freq . '" />
+      <input type="submit" value="Delete" />
+      </form>
+      </td>';
+         //  publish_this_delete_feed(1);
+      $formattedResults .= '<td>' . $name . '</td>';
+      $formattedResults .= '<td>' . $category . '</td>';
+      $formattedResults .= '<td>' . $freq . ' hours</td>';
+      $formattedResults .= '<td><ul>';
+
+      if($customContent) {
+        /* http://webapi.publishthis.com/rest/feeds/{feedId}/custom-data/?token={your api token} */
+        $JSONurl = $prefix . $feedID . $suffix . $apiKey;
+        $formattedResults .= '<li>Custom Content: <a href="' . $JSONurl . '" target="_blank">' . $JSONurl . '</a></li>';
+      }
+      if($curatedContent) {
+        /* http://webapi.publishthis.com/rest/content/curated/feed/{feedId}?token={your api token} */
+        $JSONurl = $prefix_curated . $feedID . $suffix_curated . $apiKey;
+        $formattedResults .= '<li>Curated Content: <a href="' . $JSONurl . '" target="_blank">' . $JSONurl . '</a></li>';
+      }
+      if($automatedContent) {
+        /* http://webapi.publishthis.com/rest/content/automated/feed/{feedId}?token={your api token} */
+        $JSONurl = $prefix_automated . $feedID . $suffix_automated . $apiKey;
+        $formattedResults .= '<li>Automated Content: <a href="' . $JSONurl . '" target="_blank">' . $JSONurl . '</a></li>';
+      }
+      if( ($customContent + $curatedContent + $automatedContent) == 0) {
+        $formattedResults .= '<li>No content feed types have been selected for import for this feed.</li>';
+      }
+      $formattedResults .='</ul></td>';
+      $formattedResults .= '<td>' . $lastModified . '</td>';
+      $formattedResults .= '</tr>' . "\n";
+    }
+    $formattedResults .= '</table>';
+    $empty_value .= '</table>';
+    // No content
+    if ($formattedResults == $empty_value) {
+      $output = '<div class="publish-feeds-list">
+      <h2>No feeds have been setup</h2>
+      <div>Visit <form method="post" action="add_new_feed" class="publishThisFormLink">
+      <input type="submit" value="Structure->PublishThis->Add Feed" />
+      </form> to setup a new JSON feed to import.</div>
+      </div>';
+    }
+    // results found
+    else {
+      // Pass data through theme function.
+      $output = '<div class="publish-feeds-list">' . $formattedResults . '</div>';
+    }
+
+  } /*endif user_access*/
+  return $output;
+} /* end function publish_this_list_Feeds */
+
+
+
+
+//********************* Publish This Custom DB functions *******************************************//
+
+/**
+ * Custom publish_this taxonomy SELECT from taxonomy_vocabulary table.
+ * @return: A result set of the taxonomy vocabularies
+ */
+
+function publish_this_get_vocabularies(){
+    $vocabulary = taxonomy_get_vocabularies();
+    $vocab_array = array();
+    foreach ($vocabulary as $item) {
+      $key = $item->vid;
+      $value = $item->name;
+      $vocab_array[$key] = $value;
+    }
+    return $vocab_array;
+} /* end function publish_this_get_vocabularies */
+
+/**
+ * Custom publish_this category SELECT from taxonomy_term_data table.
+ * @return: A result set of the categories
+ */
+function publish_this_get_categories(){
+  $vid = variable_get('publish_this_taxonomy');
+  $vocabulary = taxonomy_get_tree($vid, $parent = 0, $max_depth = 1);
+  $vocab_array = array();
+  foreach ($vocabulary as $item) {
+    $key = $item->tid;
+    $value = $item->name;
+    $vocab_array[$key] = $value;
+  }
+  return $vocab_array;
+} /* end function publish_this_get_categories */
+
+
+/**
+ * Custom publish_this feeds SELECT from publish_this table.
+ * @return: A result set of the feeds
+ */
+function publish_this_get_feeds($feedID = ""){
+  //Use Database API to retrieve current PublishThis feeds.
+  if($feedID == "") {
+    $query = db_select('publish_this','p')
+     ->fields('p',array('publish_this_feed_id','publish_this_name','publish_this_category','bool_content_custom','bool_content_curated','bool_content_automated','sync_frequency','last_modified'))
+     ->orderBy('publish_this_name', 'ASC')
+     ->execute();
+  } else {
+    $query = db_select('publish_this','p')
+     ->fields('p',array('publish_this_feed_id','publish_this_name','publish_this_category','bool_content_custom','bool_content_curated','bool_content_automated','sync_frequency','last_modified'))
+     ->condition('publish_this_feed_id', $feedID)
+     ->orderBy('publish_this_name', 'ASC')
+     ->execute();
+  }
+  return $query;
+} /* end function publish_this_get_feeds */
+
+
+/**
+ * Custom publish_this global settings SELECT from variables table.
+ * @return: A result set of the settings
+ */
+function publish_this_get_settings($variableName){
+  //Use Drupal 7 variable_get to retrieve current global PublishThis settings.
+  $query = variable_get( $variableName );
+  return $query;
+} /* end function publish_this_get_settings */
+
+
+/**
+ * Custom publish_this record deletion SELECT/WHERE & DELETE from publish_this table.
+ * @return: confirmation/boolean of deletion
+ */
+function publish_this_delete_feed($feedID) {
+  try {
+    $query = db_delete('publish_this')
+    ->condition('publish_this_feed_id', $feedID)
+    ->execute();
+    return $query;
+  }
+  catch (PDOException $e) {
+    drupal_set_message(t('Error: A feed with that ID could not be found for deletion. [ %message ]', array('%message' => $e->getMessage())), 'error');
+  }
+} /* end function publish_this_delete_feed */
+
+
+/**
+ * Custom publish_this record update SELECT/WHERE & UPDATE publish_this table.
+ * @return: confirmation/boolean of update
+ */
+function publish_this_update_feed($name,$feedID,$cat,$custom,$curated,$automated,$freq) {
+  try {
+    $query = db_update('publish_this')
+    ->fields(array(
+      'publish_this_name' => $name,
+      'publish_this_category' => $cat,
+      'bool_content_custom' => $custom,
+      'bool_content_curated' => $curated,
+      'bool_content_automated' => $automated,
+      'sync_frequency' => $freq,
+      'last_modified' => format_date(time(), 'custom', 'Y-m-d H:i:s'),
+      ))
+    ->condition('publish_this_feed_id', $feedID)
+    ->execute();
+    return $query;
+  }
+  catch (PDOException $e) {
+    drupal_set_message(t('Error: A feed with that ID could not be found for updating. [ %message ]', array('%message' => $e->getMessage())), 'error');
+  }
+} /* end function publish_this_delete_feed */
+
+
+/**
+ * Custom publish_this record INSERT to publish_this table.
+ * @return: confirmation/boolean of insertion
+ */
+function publish_this_add_feed($name,$feedID,$cat,$custom,$curated,$automated,$freq) {
+  try {
+    $query = db_insert('publish_this')
+    ->fields(array(
+      'publish_this_name' => $name,
+      'publish_this_feed_id' => $feedID,
+      'publish_this_category' => $cat,
+      'bool_content_custom' => $custom,
+      'bool_content_curated' => $curated,
+      'bool_content_automated' => $automated,
+      'sync_frequency' => $freq,
+      'last_modified' => format_date(time(), 'custom', 'Y-m-d H:i:s'),
+    ))
+    ->execute();
+    return $query;
+  }
+  catch (PDOException $e) {
+    drupal_set_message( t('Feed ID of @feed already exists.  Please double check your feed ID from PublishThis, and if necessary, edit or remove the existing feed below.', array('@feed' => $feedID)), 'error');
+  }
+} /* end function publish_this_add_feed */

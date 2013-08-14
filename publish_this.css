@@ -1,0 +1,28 @@
+/* publish_this.css */
+
+
+.publishThisFormLink {
+  display: inline-block;
+  clear: none;
+}
+
+.publishThisFormLink input[type="submit"] {
+  background: none;
+  color: #0074BD;
+  text-decoration: none;
+  font-size: 100%;
+}
+
+.publishThisFormLink input[type="submit"]:hover {
+  background: none;
+  color: #0074BD;
+  text-decoration: underline;
+}
+
+.publishThisEmbed {
+  width: 98%;
+  height: 800px;
+  border: 1px solid #999;
+  overflow: auto;
+}
+

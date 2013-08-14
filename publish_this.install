@@ -1,0 +1,88 @@
+<?php
+
+/**
+ * Implements hook_install()
+ */
+function publish_this_install() {
+  watchdog('publish_this', t('Publish This module installed/enabled; a custom table entitled publish_this has been added to your Drupal database.'), $variables = array(), $severity = WATCHDOG_INFO, $link = NULL);
+}
+
+
+/**
+ * Implements hook_uninstall()
+ */
+function publish_this_uninstall() {
+	db_delete('publish_this_feeds');
+	variable_del('publish_this_api_key');
+	variable_del('publish_this_prefix');
+	variable_del('publish_this_prefix_automated');
+	variable_del('publish_this_prefix_curated');
+	variable_del('publish_this_suffix');
+	variable_del('publish_this_suffix_automated');
+	variable_del('publish_this_suffix_curated');
+	variable_del('publish_this_taxonomy');
+	variable_del('publish_this_last_mod_timestamp');
+
+	watchdog('publish_this', t('PublishThis module uninstalled; the custom publish_this table and associated custom system variables have been removed from your Drupal database.'), $variables = array(), $severity = WATCHDOG_INFO, $link = NULL);
+}
+
+
+/**
+ * Implements hook_schema()
+ */
+function publish_this_schema() {
+  $schema['publish_this'] = array(
+    'description' => t('First table'),
+    'fields' => array(
+      'publish_this_feed_id' => array(
+        'description' => t('My unique identifier'),
+        'type' => 'varchar',
+        'length' => 100,
+        'not null' => true,
+      ),
+      'publish_this_name' => array(
+        'description' => t('Name'),
+        'type' => 'varchar',
+        'length' => 50,
+        'not null' => true,
+      ),
+      'publish_this_category' => array(
+        'description' => t('Category'),
+        'type' => 'int',
+        'length' => 10,
+        'not null' => true,
+      ),
+      'bool_content_custom' => array(
+        'description' => t('Boolean flag to enable custom content feed import'),
+        'type' => 'int',
+        'not null' => true,
+        'default' => 0,
+      ),
+      'bool_content_curated' => array(
+        'description' => t('Boolean flag to enable curated content feed import'),
+        'type' => 'int',
+        'not null' => true,
+        'default' => 0,
+      ),
+      'bool_content_automated' => array(
+        'description' => t('Boolean flag to enable automated content feed import'),
+        'type' => 'int',
+        'not null' => true,
+        'default' => 0,
+      ),
+      'sync_frequency' => array(
+        'description' => t('Frequency'),
+        'type' => 'int',
+        'length' => 10,
+        'not null' => true,
+      ),
+      'last_modified' => array(
+        'description' => t('Timestamp, last modified'),
+        'mysql_type' => 'DATETIME',
+        'not null' => TRUE,
+      ),
+    ),
+    'primary key' => array('publish_this_feed_id'),
+  );
+  return $schema;
+}
