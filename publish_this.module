@@ -76,6 +76,7 @@ function publish_this_menu() {
   /* edit a feed form */
   $items['admin/structure/publish_this_feeds/edit_feed'] = array(
     'title' => ' Edit feed',
+    'hidden' => true,
     'description' => 'Edit an existing feed in the Drupal import queue.',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('publish_this_editFeed_form'),
@@ -86,6 +87,7 @@ function publish_this_menu() {
   /* delete feed form */
   $items['admin/structure/publish_this_feeds/delete_feed'] = array(
     'title' => ' Delete feed',
+    'hidden' => true,
     'description' => 'Delete an existing feed from the import queue in Drupal.',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('publish_this_deleteFeed_form'),
@@ -101,6 +103,27 @@ function publish_this_menu() {
     'access arguments' => array('access publish_this content'),
     'type' => MENU_NORMAL_ITEM,
   );
+
+
+  $items['admin/structure/publish_this_feeds/manual_sync'] = array(
+    'title' => 'Manual Sync',
+    'description' => 'Manually sync the PublishThis feeds in the Drupal import queue.',
+    'page callback' => 'publish_this_page',
+    'page arguments' => array('3'),
+    'access arguments' => array('access publish_this content'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  $items['admin/structure/publish_this_feeds/cron_sync'] = array(
+    'title' => 'Cron Sync',
+    'hidden' => true,
+    'description' => 'Scheduled sync (cron job) of PublishThis feeds in the Drupal import queue.',
+    'page callback' => 'publish_this_page',
+    'page arguments' => array('4'),
+    'access arguments' => array('access publish_this content'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+
  /*
   $items['publish_this_feeds'] = array(
     'title' => 'PublishThis feeds',
@@ -503,7 +526,7 @@ function publish_this_deleteFeed_form_submit($form, &$form_state) {
  * Implements hook_form_alter().
  */
 function publish_this_form_alter(&$form, &$form_state, $form_id) {
-  watchdog('publish_this', t('hook form alter called by form with id: %formID'), $variables = array('%formID' => $form_id), $severity = WATCHDOG_INFO, $link = NULL);
+//  watchdog('publish_this', t('hook form alter called by form with id: %formID'), $variables = array('%formID' => $form_id), $severity = WATCHDOG_INFO, $link = NULL);
   switch($form_id) {
     case 'publish_this_deleteFeed_form':
       $form['#submit'][] = 'publish_this_editFeed_form_submit_handler';
@@ -546,6 +569,14 @@ function publish_this_page($case) {
               . '<p>You can manage and curate content within PublishThis using the iframe embedded page below or visit the <a href="https://manager.publishthis.com" target="_blank">PublishThis site in a separate window</a>.</p>'
               . '<iframe class="publishThisEmbed" src="https://manager.publishthis.com"></iframe>'
               ;
+      break;
+    case 3:
+      /* manual-sync page */
+      $output = publish_this_import(false);
+      break;
+    case 4:
+      /* internal cron page */
+      $output = publish_this_import();
       break;
     default:
       break;
@@ -591,6 +622,199 @@ function publish_this_theme() {
   );
 }
 --*/
+
+
+
+/**
+*   @function: publish_this_import
+*     purpose:  Cron importer for PublishThis feeds.
+*
+*/
+function publish_this_import($scheduled = true) {
+  $apiKey = publish_this_get_settings('publish_this_api_key');
+  $prefix = publish_this_get_settings('publish_this_prefix');
+  $suffix = publish_this_get_settings('publish_this_suffix');
+  $prefix_curated = publish_this_get_settings('publish_this_prefix_curated');
+  $suffix_curated = publish_this_get_settings('publish_this_suffix_curated');
+  $prefix_automated = publish_this_get_settings('publish_this_prefix_automated');
+  $suffix_automated = publish_this_get_settings('publish_this_suffix_automated');
+
+  $currentHour = date('H');
+
+  if (user_access('access content')) {
+    $results = publish_this_get_feeds();
+    $feedArray = array();
+    $parentCount = 0;
+
+    if(!$scheduled) {
+        watchdog('publish_this', t('PublishThis manual sync/import initiated.'), $variables = array(), $severity = WATCHDOG_INFO, $link = NULL);
+    } else {
+        watchdog('publish_this', t('PublishThis cron import initiated at %hour-hundred hours.',array('%hour'=>$currentHour)), $variables = array(), $severity = WATCHDOG_INFO, $link = NULL);
+    }
+
+
+    foreach ($results as $result) {
+        $name = $result->publish_this_name;
+        $feedID = $result->publish_this_feed_id;
+
+        $tid = $result->publish_this_category;
+        $term = taxonomy_term_load($tid);
+        $category = $term->name;
+
+        $customContent = $result->bool_content_custom;
+        $curatedContent = $result->bool_content_curated;
+        $automatedContent = $result->bool_content_automated;
+
+        $freq = $result->sync_frequency;
+
+        /* check to see if this is manual sync or a cron job (for cron jobs, only import if modulus is zero) */
+        if( !$scheduled || ( ($scheduled) && ( ($currentHour % $freq) == 0) ) ) {
+
+          $JSONurl = "";
+          if($customContent) {
+            /* http://webapi.publishthis.com/rest/feeds/{feedId}/custom-data/?token={your api token} */
+            $JSONurl = $prefix . $feedID . $suffix . $apiKey;
+            $itemCount = importJSONitems($JSONurl);
+            $feed = array( "name" => $name, "categoryID" => $tid, "category" => $category, "feedID" => $feedID, "syncFreq" => $freq, "url" => $JSONurl, "items" => $itemCount );
+            array_push($feedArray,$feed);
+          }
+          if($curatedContent) {
+            /* http://webapi.publishthis.com/rest/content/curated/feed/{feedId}?token={your api token} */
+            $JSONurl = $prefix_curated . $feedID . $suffix_curated . $apiKey;
+            $itemCount = importJSONitems($JSONurl);
+            $feed = array( "name" => $name, "categoryID" => $tid, "category" => $category, "feedID" => $feedID, "syncFreq" => $freq, "url" => $JSONurl, "items" => $itemCount );
+            array_push($feedArray,$feed);
+          }
+          if($automatedContent) {
+            /* http://webapi.publishthis.com/rest/content/automated/feed/{feedId}?token={your api token} */
+            $JSONurl = $prefix_automated . $feedID . $suffix_automated . $apiKey;
+            $itemCount = importJSONitems($JSONurl);
+            $feed = array( "name" => $name, "categoryID" => $tid, "category" => $category, "feedID" => $feedID, "syncFreq" => $freq, "url" => $JSONurl, "items" => $itemCount );
+            array_push($feedArray,$feed);
+          }
+
+        } /* end scheduled cron/frequency check */
+
+    $parentCount++;
+    } /* end foreach */
+  }
+  if( !$scheduled ) {
+    $output = '<h1>Result Summary for Manual Sync of PublishThis JSON feeds</h1>';
+    $output .= '<p>PublishThis parentFeeds found: ' . $parentCount . '</p>';
+    $output .= '<p>Total individual feeds flagged for import as of ' . $currentHour . '-hundred hrs: ' . count($feedArray) . '</p>';
+    $output .= '<table>';
+    $output .= "<tr>
+      <th>Feed Name</th>
+      <th>Category [Term ID]</th>
+      <th>Feed Sync</th>
+      <th>Feed ID</th>
+      <th>Feed JSON URL</th>
+      <th>Nodes Imported</th>
+      </tr>";
+
+    foreach($feedArray as $feed) {
+      $output .= '<tr>
+        <td>' . $feed["name"] . '</td>
+        <td>' . $feed["category"] . ' [' . $feed["categoryID"] . ']</td>
+        <td>' . $feed["syncFreq"] . '</td>
+        <td>' . $feed["feedID"] . '</td>
+        <td><a href="' . $feed["url"] . '" target="_blank">' . $feed["url"] . '</a></td>
+        <td>' . $feed["items"] . '</td>
+        </tr>';
+    }
+    $output .= '</table>';
+    watchdog('publish_this', t('PublishThis manual sync/import completed; processed %count feeds.',array('%count'=>count($feedArray))), $variables = array(), $severity = WATCHDOG_INFO, $link = NULL);
+  	return $output;
+  } else {
+    watchdog('publish_this', t('PublishThis cron import completed; processed %count feeds.',array('%count'=>count($feedArray))), $variables = array(), $severity = WATCHDOG_INFO, $link = NULL);
+    return;
+  }
+} /* end function publish_this_import */
+
+
+
+
+/**
+ * Custom publish_this feeds listing for rendering.
+ * @return: A result set of the feeds
+ */
+function importJSONitems($JSONurl) {
+  $filepath = $JSONurl;
+  $jsonString = file_get_contents($filepath);
+  $jsonString = utf8_decode($jsonString);
+  $jsonArray = json_decode($jsonString, true);
+
+  switch (json_last_error()) {
+      case JSON_ERROR_NONE:
+//        echo ' - No errors';
+          break;
+      case JSON_ERROR_DEPTH:
+          echo ' - Maximum stack depth exceeded';
+          break;
+      case JSON_ERROR_STATE_MISMATCH:
+          echo ' - Underflow or the modes mismatch';
+          break;
+      case JSON_ERROR_CTRL_CHAR:
+          echo ' - Unexpected control character found';
+          break;
+      case JSON_ERROR_SYNTAX:
+          echo ' - Syntax error, malformed JSON';
+          break;
+      case JSON_ERROR_UTF8:
+          echo ' - Malformed UTF-8 characters, possibly incorrectly encoded';
+          break;
+      default:
+          echo ' - Unknown error';
+          break;
+  }
+
+  $jsonArray = $jsonArray['resp']['data']['resultList'];
+  /*debug*/ //var_dump($jsonArray);
+
+  $itemCount = count($jsonArray);
+  $nodeCount = 0;
+
+  for ($i = 0; $i < $itemCount; $i++)
+  {
+    $record = $jsonArray[$i];
+    if( array_key_exists("contentType", $record) ) {
+      if( $record["contentType"] == 'article' ) {
+        $nodeTitle = $record["title"];
+        $nodePublishThisID = $record['docId'];
+        $nodeDate = $record["publishDate"];
+        $nodeAuthor = $record["publisher"];
+        $nodeBody = $record["summary"];
+        $nodeFeaturedImage = $record["imageUrl"];
+        $nodeFeaturedImageCredit = $record["photoCredit"];
+        $nodeLink = $record["url"];
+
+        /* process node begins */
+        /*
+        if($i == 0) { $output .='<ol>'; }
+        $output .= '<li><div>
+          <b>Title</b>: ' . $nodeTitle . '<br/>
+          <b>Date</b>: ' . $nodeDate . '<br/>
+          <b>Author</b>: ' . $nodeAuthor . '<br/>
+          <b>UID</b>: ' . $nodePublishThisID . '<br/>
+          <b>Link</b>: ' . $nodeLink . '<br/>
+          <b>Featured Image</b>: ' . $nodeFeaturedImage . '<br/>
+          <b>Image Credit</b>: ' . $nodeFeaturedImageCredit . '<br/>
+          <b>Body</b>: ' . $nodeBody . '<br/>
+          </div></li>';
+        if($i == $itemCount) { $output .='</ol><hr/>'; }
+        */
+        /* process node ends */
+
+        $nodeCount++;
+      } /* end if(contentType == article) */
+    } /* end if(array_key_exists) */
+  } /* end for loop */
+
+  $summary = $nodeCount . " articles imported from feed: <a href='" . $filepath . "' target='_blank'>" . $filepath . "</a>";
+  watchdog('publish_this', $summary, $variables = array(), $severity = WATCHDOG_INFO, $link = NULL);
+
+  return $nodeCount;
+}
 
 
 
