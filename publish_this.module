@@ -674,21 +674,21 @@ function publish_this_import($scheduled = true) {
           if($customContent) {
             /* http://webapi.publishthis.com/rest/feeds/{feedId}/custom-data/?token={your api token} */
             $JSONurl = $prefix . $feedID . $suffix . $apiKey;
-            $itemCount = importJSONitems($JSONurl);
+            $itemCount = publish_this_importJSONitems($JSONurl);
             $feed = array( "name" => $name, "categoryID" => $tid, "category" => $category, "feedID" => $feedID, "syncFreq" => $freq, "url" => $JSONurl, "items" => $itemCount );
             array_push($feedArray,$feed);
           }
           if($curatedContent) {
             /* http://webapi.publishthis.com/rest/content/curated/feed/{feedId}?token={your api token} */
             $JSONurl = $prefix_curated . $feedID . $suffix_curated . $apiKey;
-            $itemCount = importJSONitems($JSONurl);
+            $itemCount = publish_this_importJSONitems($JSONurl);
             $feed = array( "name" => $name, "categoryID" => $tid, "category" => $category, "feedID" => $feedID, "syncFreq" => $freq, "url" => $JSONurl, "items" => $itemCount );
             array_push($feedArray,$feed);
           }
           if($automatedContent) {
             /* http://webapi.publishthis.com/rest/content/automated/feed/{feedId}?token={your api token} */
             $JSONurl = $prefix_automated . $feedID . $suffix_automated . $apiKey;
-            $itemCount = importJSONitems($JSONurl);
+            $itemCount = publish_this_importJSONitems($JSONurl);
             $feed = array( "name" => $name, "categoryID" => $tid, "category" => $category, "feedID" => $feedID, "syncFreq" => $freq, "url" => $JSONurl, "items" => $itemCount );
             array_push($feedArray,$feed);
           }
@@ -735,10 +735,10 @@ function publish_this_import($scheduled = true) {
 
 
 /**
- * Custom publish_this feeds listing for rendering.
+ * Custom Function publish_this_importJSONitems()
  * @return: A result set of the feeds
  */
-function importJSONitems($JSONurl) {
+function publish_this_importJSONitems($JSONurl) {
   $filepath = $JSONurl;
   $jsonString = file_get_contents($filepath);
   $jsonString = utf8_decode($jsonString);
@@ -773,6 +773,7 @@ function importJSONitems($JSONurl) {
 
   $itemCount = count($jsonArray);
   $nodeCount = 0;
+//  $output ="";
 
   for ($i = 0; $i < $itemCount; $i++)
   {
@@ -781,15 +782,45 @@ function importJSONitems($JSONurl) {
       if( $record["contentType"] == 'article' ) {
         $nodeTitle = $record["title"];
         $nodePublishThisID = $record['docId'];
-        $nodeDate = $record["publishDate"];
-        $nodeAuthor = $record["publisher"];
+        $nodeDate = strtotime($record["publishDate"]);
+
+        $nodeAuthorName = $record["publisher"];
+        $nodeAuthor = publish_this_uidLookup($nodeAuthorName);
+
         $nodeBody = $record["summary"];
         $nodeFeaturedImage = $record["imageUrl"];
         $nodeFeaturedImageCredit = $record["photoCredit"];
         $nodeLink = $record["url"];
 
+
+        $node = new stdClass();
+        $node->title = $nodeTitle;
+        $node->type = 'article';
+        node_object_prepare($node); // Sets some defaults. Invokes hook_prepare() and hook_node_prepare().
+        $node->language = 'en';
+        $node->uid = $nodeAuthor;
+
+        $node->status = 1; //(1 or 0): published or not
+        if($i == 0) { $node->promote = 0; } //(1 or 0): promoted to front page
+        $node->comment = 0; // 0 = comments disabled, 1 = read only, 2 = read/write
+
+        // Term reference (taxonomy) field
+        //$node->field_product_tid[$node->language][]['tid'] = $form_state['values']['a taxonomy term id'];
+
+        $node->created = $nodeDate;
+
+        $field_langcode = field_language('node', $node, 'body');
+            $node->body[$field_langcode][0]['value']   = $nodeBody;
+            $node->body[$field_langcode][0]['summary'] = text_summary($nodeBody);
+            $node->body[$field_langcode][0]['format']  = filter_default_format();
+
+
+        //$node->field_ptid = $nodePublishThisID;
+        $node = node_submit($node); // Prepare node for saving
+        node_save($node);
+
         /* process node begins */
-        /*
+/*
         if($i == 0) { $output .='<ol>'; }
         $output .= '<li><div>
           <b>Title</b>: ' . $nodeTitle . '<br/>
@@ -802,7 +833,7 @@ function importJSONitems($JSONurl) {
           <b>Body</b>: ' . $nodeBody . '<br/>
           </div></li>';
         if($i == $itemCount) { $output .='</ol><hr/>'; }
-        */
+*/
         /* process node ends */
 
         $nodeCount++;
@@ -810,11 +841,13 @@ function importJSONitems($JSONurl) {
     } /* end if(array_key_exists) */
   } /* end for loop */
 
+  //echo $output;
+
   $summary = $nodeCount . " articles imported from feed: <a href='" . $filepath . "' target='_blank'>" . $filepath . "</a>";
   watchdog('publish_this', $summary, $variables = array(), $severity = WATCHDOG_INFO, $link = NULL);
 
   return $nodeCount;
-}
+} /* end Function publish_this_importJSONitems() */
 
 
 
@@ -936,11 +969,21 @@ function publish_this_list_feeds() {
 
 //********************* Publish This Custom DB functions *******************************************//
 
+
+/**
+ * Custom publish_this user id lookup based on author name in JSON.
+ * @return: the UID
+ */
+function publish_this_uidLookup($userName) {
+
+  return 1;
+}
+
+
 /**
  * Custom publish_this taxonomy SELECT from taxonomy_vocabulary table.
  * @return: A result set of the taxonomy vocabularies
  */
-
 function publish_this_get_vocabularies(){
     $vocabulary = taxonomy_get_vocabularies();
     $vocab_array = array();
