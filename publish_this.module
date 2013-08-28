@@ -156,8 +156,8 @@ function publish_this_globalSettings_form($form, &$form_state) {
   );
   $form['general']['publish_this_prefix'] = array(
     '#type' => 'textfield',
-    '#title' => t('Prefix for Custom Content Feed'),
-    '#default_value' => variable_get('publish_this_prefix', 'http://webapi.publishthis.com/rest/feeds/'),
+    '#title' => t('Prefix for Automated Twitter Feed'),
+    '#default_value' => variable_get('publish_this_prefix', 'http://webapi.publishthis.com/rest/content/automated/tweets/feed/'),
     '#size' => '60',
     '#maxlength' => '128',
     '#required' => TRUE,
@@ -165,8 +165,8 @@ function publish_this_globalSettings_form($form, &$form_state) {
   );
   $form['general']['publish_this_suffix'] = array(
     '#type' => 'textfield',
-    '#title' => t('Suffix for Custom Content Feed'),
-    '#default_value' => variable_get('publish_this_suffix', '/custom-data/?token='),
+    '#title' => t('Suffix for Automated Twitter Feed'),
+    '#default_value' => variable_get('publish_this_suffix', '?token='),
     '#size' => '60',
     '#maxlength' => '128',
     '#required' => TRUE,
@@ -273,12 +273,6 @@ function publish_this_addFeed_form($form, &$form_state) {
     '#options' => $categories,
     '#required' => TRUE,
   );
-  $form['general']['publish_this_content_custom'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Custom Content'),
-    '#description' => 'Check to enable PublishThis custom content import for this feed.',
-    '#return_value' => TRUE,
-  );
   $form['general']['publish_this_content_curated'] = array(
     '#type' => 'checkbox',
     '#title' => t('Curated Content'),
@@ -289,6 +283,12 @@ function publish_this_addFeed_form($form, &$form_state) {
     '#type' => 'checkbox',
     '#title' => t('Automated Content'),
     '#description' => 'Check to enable PublishThis automated content import for this feed.',
+    '#return_value' => TRUE,
+  );
+  $form['general']['publish_this_content_custom'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Automated Tweets'),
+    '#description' => 'Check to enable PublishThis automated tweets import for this feed.',
     '#return_value' => TRUE,
   );
   $form['general']['publish_this_frequency'] = array(
@@ -370,12 +370,6 @@ function publish_this_editFeed_form($form, &$form_state) {
     '#default_value' => isset($_POST['feedCat']) ? $_POST['feedCat'] : '',
     '#required' => TRUE,
   );
-  $form['general']['publish_this_content_custom'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Custom Content'),
-    '#description' => 'Check to enable PublishThis custom content import for this feed.',
-    '#default_value' => isset($_POST['feedCustom']) ? $_POST['feedCustom'] : '',
-  );
   $form['general']['publish_this_content_curated'] = array(
     '#type' => 'checkbox',
     '#title' => t('Curated Content'),
@@ -387,6 +381,12 @@ function publish_this_editFeed_form($form, &$form_state) {
     '#title' => t('Automated Content'),
     '#description' => 'Check to enable PublishThis automated content import for this feed.',
     '#default_value' => isset($_POST['feedAutomated']) ? $_POST['feedAutomated'] : '',
+  );
+  $form['general']['publish_this_content_custom'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Automated Tweets'),
+    '#description' => 'Check to enable PublishThis automated tweets import for this feed.',
+    '#default_value' => isset($_POST['feedCustom']) ? $_POST['feedCustom'] : '',
   );
   $form['general']['publish_this_frequency'] = array(
     '#type' => 'textfield',
@@ -468,12 +468,6 @@ function publish_this_deleteFeed_form($form, &$form_state) {
     '#default_value' => isset($_POST['feedCat']) ? $_POST['feedCat'] : '',
     '#required' => TRUE,
   );
-  $form['general']['publish_this_content_custom'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Custom Content'),
-    '#description' => 'Check to enable PublishThis custom content import for this feed.',
-    '#default_value' => isset($_POST['feedCustom']) ? $_POST['feedCustom'] : '',
-  );
   $form['general']['publish_this_content_curated'] = array(
     '#type' => 'checkbox',
     '#title' => t('Curated Content'),
@@ -485,6 +479,12 @@ function publish_this_deleteFeed_form($form, &$form_state) {
     '#title' => t('Automated Content'),
     '#description' => 'Check to enable PublishThis automated content import for this feed.',
     '#default_value' => isset($_POST['feedAutomated']) ? $_POST['feedAutomated'] : '',
+  );
+  $form['general']['publish_this_content_custom'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Automated Tweets'),
+    '#description' => 'Check to enable PublishThis automated tweets import for this feed.',
+    '#default_value' => isset($_POST['feedCustom']) ? $_POST['feedCustom'] : '',
   );
   $form['general']['publish_this_frequency'] = array(
     '#type' => 'textfield',
@@ -672,23 +672,23 @@ function publish_this_import($scheduled = true) {
 
           $JSONurl = "";
           if($customContent) {
-            /* http://webapi.publishthis.com/rest/feeds/{feedId}/custom-data/?token={your api token} */
+            /* http://webapi.publishthis.com/rest/content/automated/tweets/feed/{feedId}?token={your api token} */
             $JSONurl = $prefix . $feedID . $suffix . $apiKey;
-            $itemCount = publish_this_importJSONitems($JSONurl);
+            $itemCount = publish_this_importJSONitems($JSONurl, $tid);
             $feed = array( "name" => $name, "categoryID" => $tid, "category" => $category, "feedID" => $feedID, "syncFreq" => $freq, "url" => $JSONurl, "items" => $itemCount );
             array_push($feedArray,$feed);
           }
           if($curatedContent) {
             /* http://webapi.publishthis.com/rest/content/curated/feed/{feedId}?token={your api token} */
             $JSONurl = $prefix_curated . $feedID . $suffix_curated . $apiKey;
-            $itemCount = publish_this_importJSONitems($JSONurl);
+            $itemCount = publish_this_importJSONitems($JSONurl, $tid);
             $feed = array( "name" => $name, "categoryID" => $tid, "category" => $category, "feedID" => $feedID, "syncFreq" => $freq, "url" => $JSONurl, "items" => $itemCount );
             array_push($feedArray,$feed);
           }
           if($automatedContent) {
             /* http://webapi.publishthis.com/rest/content/automated/feed/{feedId}?token={your api token} */
             $JSONurl = $prefix_automated . $feedID . $suffix_automated . $apiKey;
-            $itemCount = publish_this_importJSONitems($JSONurl);
+            $itemCount = publish_this_importJSONitems($JSONurl, $tid);
             $feed = array( "name" => $name, "categoryID" => $tid, "category" => $category, "feedID" => $feedID, "syncFreq" => $freq, "url" => $JSONurl, "items" => $itemCount );
             array_push($feedArray,$feed);
           }
@@ -724,7 +724,7 @@ function publish_this_import($scheduled = true) {
     }
     $output .= '</table>';
     watchdog('publish_this', t('PublishThis manual sync/import completed; processed %count feeds.',array('%count'=>count($feedArray))), $variables = array(), $severity = WATCHDOG_INFO, $link = NULL);
-  	return $output;
+    return $output;
   } else {
     watchdog('publish_this', t('PublishThis cron import completed; processed %count feeds.',array('%count'=>count($feedArray))), $variables = array(), $severity = WATCHDOG_INFO, $link = NULL);
     return;
@@ -738,7 +738,8 @@ function publish_this_import($scheduled = true) {
  * Custom Function publish_this_importJSONitems()
  * @return: A result set of the feeds
  */
-function publish_this_importJSONitems($JSONurl) {
+function publish_this_importJSONitems($JSONurl, $tid) {
+  $tid = utf8_decode($tid);
   $filepath = $JSONurl;
   $jsonString = file_get_contents($filepath);
   $jsonString = utf8_decode($jsonString);
@@ -746,7 +747,6 @@ function publish_this_importJSONitems($JSONurl) {
 
   switch (json_last_error()) {
       case JSON_ERROR_NONE:
-//        echo ' - No errors';
           break;
       case JSON_ERROR_DEPTH:
           echo ' - Maximum stack depth exceeded';
@@ -773,13 +773,12 @@ function publish_this_importJSONitems($JSONurl) {
 
   $itemCount = count($jsonArray);
   $nodeCount = 0;
-//  $output ="";
 
   for ($i = 0; $i < $itemCount; $i++)
   {
     $record = $jsonArray[$i];
     if( array_key_exists("contentType", $record) ) {
-      if( $record["contentType"] == 'article' ) {
+      /*if( $record["contentType"] == 'article' ) {
         $nodeTitle = $record["title"];
         $nodePublishThisID = $record['docId'];
         $nodeDate = strtotime($record["publishDate"]);
@@ -819,6 +818,62 @@ function publish_this_importJSONitems($JSONurl) {
         $node = node_submit($node); // Prepare node for saving
         node_save($node);
 
+        *//* process node begins */
+/*
+        if($i == 0) { $output .='<ol>'; }
+        $output .= '<li><div>
+          <b>Title</b>: ' . $nodeTitle . '<br/>
+          <b>Date</b>: ' . $nodeDate . '<br/>
+          <b>Author</b>: ' . $nodeAuthor . '<br/>
+          <b>UID</b>: ' . $nodePublishThisID . '<br/>
+          <b>Link</b>: ' . $nodeLink . '<br/>
+          <b>Featured Image</b>: ' . $nodeFeaturedImage . '<br/>
+          <b>Image Credit</b>: ' . $nodeFeaturedImageCredit . '<br/>
+          <b>Body</b>: ' . $nodeBody . '<br/>
+          </div></li>';
+        if($i == $itemCount) { $output .='</ol><hr/>'; }
+*/
+        /* process node ends */
+/*
+        $nodeCount++;
+      } *//* end if(contentType == tweet) */
+      if( $record["contentType"] == 'tweet' ) {
+
+        $nodeTitle = $record["statusId"];
+        $nodePublishThisID = $record['docId'];
+        $nodeDate = strtotime($record["publishDate"]);
+        $nodeAuthorName = $record["userScreenName"];
+        $nodeAuthor = publish_this_uidLookup($nodeAuthorName);
+        $nodeBody = $record["statusText"];
+
+        $node = new stdClass();
+        $node->title = $nodeTitle;
+        $node->type = 'automatic_tweets';
+        node_object_prepare($node); // Sets some defaults. Invokes hook_prepare() and hook_node_prepare().
+        $node->language = 'en';
+        $node->uid = $nodeAuthor;
+        $node->field_twitter_handle[LANGUAGE_NONE] = array(
+          0 => array('value' => $nodeAuthorName)
+        );
+
+        $node->status = 1; //(1 or 0): published or not
+        if($i == 0) { $node->promote = 0; } //(1 or 0): promoted to front page
+        $node->comment = 0; // 0 = comments disabled, 1 = read only, 2 = read/write
+
+        // Term reference (taxonomy) field
+        $node->field_category['und'][0] = array('tid' => $tid);
+
+        $node->created = $nodeDate;
+
+        $field_langcode = field_language('node', $node, 'body');
+            $node->body[$field_langcode][0]['value']   = $nodeBody;
+            $node->body[$field_langcode][0]['summary'] = text_summary($nodeBody);
+            $node->body[$field_langcode][0]['format']  = filter_default_format();
+
+        //$node->field_ptid = $nodePublishThisID;
+        $node = node_submit($node); // Prepare node for saving
+        node_save($node);
+
         /* process node begins */
 /*
         if($i == 0) { $output .='<ol>'; }
@@ -837,13 +892,70 @@ function publish_this_importJSONitems($JSONurl) {
         /* process node ends */
 
         $nodeCount++;
-      } /* end if(contentType == article) */
+      } /* end if(contentType == tweet) */
+      if( $record["contentType"] != 'tweet' && !array_key_exists("annotations", $record) && array_key_exists("summary", $record) && array_key_exists("publisher", $record) && array_key_exists("url", $record)) {
+
+        $nodeTitle = $record["title"];
+        $nodePublishThisID = $record['docId'];
+        $nodeDate = strtotime($record["publishDate"]);
+        $nodeAuthorName = $record["publisher"];
+        $nodeAuthor = publish_this_uidLookup($nodeAuthorName);
+        $nodeBody = $record["summary"];
+        $nodeLink = $record["url"];
+
+        $node = new stdClass();
+        $node->title = $nodeTitle;
+        $node->type = 'automatic_content';
+        node_object_prepare($node); // Sets some defaults. Invokes hook_prepare() and hook_node_prepare().
+        $node->language = 'en';
+        $node->uid = $nodeAuthor;
+        $node->field_story_link[LANGUAGE_NONE] = array(
+          0 => array('value' => $nodeLink)
+        );
+
+        $node->status = 1; //(1 or 0): published or not
+        if($i == 0) { $node->promote = 0; } //(1 or 0): promoted to front page
+        $node->comment = 0; // 0 = comments disabled, 1 = read only, 2 = read/write
+
+        // Term reference (taxonomy) field
+        $node->field_category['und'][0] = array('tid' => $tid);
+
+        $node->created = $nodeDate;
+
+        $field_langcode = field_language('node', $node, 'body');
+            $node->body[$field_langcode][0]['value']   = $nodeBody;
+            $node->body[$field_langcode][0]['summary'] = text_summary($nodeBody);
+            $node->body[$field_langcode][0]['format']  = filter_default_format();
+
+        //$node->field_ptid = $nodePublishThisID;
+        $node = node_submit($node); // Prepare node for saving
+        node_save($node);
+
+        /* process node begins */
+/*
+        if($i == 0) { $output .='<ol>'; }
+        $output .= '<li><div>
+          <b>Title</b>: ' . $nodeTitle . '<br/>
+          <b>Date</b>: ' . $nodeDate . '<br/>
+          <b>Author</b>: ' . $nodeAuthor . '<br/>
+          <b>UID</b>: ' . $nodePublishThisID . '<br/>
+          <b>Link</b>: ' . $nodeLink . '<br/>
+          <b>Featured Image</b>: ' . $nodeFeaturedImage . '<br/>
+          <b>Image Credit</b>: ' . $nodeFeaturedImageCredit . '<br/>
+          <b>Body</b>: ' . $nodeBody . '<br/>
+          </div></li>';
+        if($i == $itemCount) { $output .='</ol><hr/>'; }
+*/
+        /* process node ends */
+
+        $nodeCount++;
+      } /*end if(contentType == automatic) */
     } /* end if(array_key_exists) */
   } /* end for loop */
 
   //echo $output;
 
-  $summary = $nodeCount . " articles imported from feed: <a href='" . $filepath . "' target='_blank'>" . $filepath . "</a>";
+  $summary = $nodeCount . " pieces of content imported from feed: <a href='" . $filepath . "' target='_blank'>" . $filepath . "</a>";
   watchdog('publish_this', $summary, $variables = array(), $severity = WATCHDOG_INFO, $link = NULL);
 
   return $nodeCount;
@@ -886,9 +998,10 @@ function publish_this_list_feeds() {
       $tid = $result->publish_this_category;
       $term = taxonomy_term_load($tid);
       $category = $term->name;
-      $customContent = $result->bool_content_custom;
+      $tweetContent = $result->bool_content_custom;
       $curatedContent = $result->bool_content_curated;
       $automatedContent = $result->bool_content_automated;
+      $customContent = false;
       $freq = $result->sync_frequency;
       $lastModified = $result->last_modified;
 
@@ -898,7 +1011,7 @@ function publish_this_list_feeds() {
       <input type="hidden" name="feedLabel" value="' . $name . '" />
       <input type="hidden" name="feedID" value="' . $feedID . '" />
       <input type="hidden" name="feedCat" value="' . $tid . '" />
-      <input type="hidden" name="feedCustom" value="' . $customContent . '" />
+      <input type="hidden" name="feedCustom" value="' . $tweetContent . '" />
       <input type="hidden" name="feedCurated" value="' . $curatedContent . '" />
       <input type="hidden" name="feedAutomated" value="' . $automatedContent . '" />
       <input type="hidden" name="feedFreq" value="' . $freq . '" />
@@ -908,7 +1021,7 @@ function publish_this_list_feeds() {
       <input type="hidden" name="feedLabel" value="' . $name . '" />
       <input type="hidden" name="feedID" value="' . $feedID . '" />
       <input type="hidden" name="feedCat" value="' . $tid . '" />
-      <input type="hidden" name="feedCustom" value="' . $customContent . '" />
+      <input type="hidden" name="feedCustom" value="' . $tweetContent . '" />
       <input type="hidden" name="feedCurated" value="' . $curatedContent . '" />
       <input type="hidden" name="feedAutomated" value="' . $automatedContent . '" />
       <input type="hidden" name="feedFreq" value="' . $freq . '" />
@@ -921,11 +1034,6 @@ function publish_this_list_feeds() {
       $formattedResults .= '<td>' . $freq . ' hours</td>';
       $formattedResults .= '<td><ul>';
 
-      if($customContent) {
-        /* http://webapi.publishthis.com/rest/feeds/{feedId}/custom-data/?token={your api token} */
-        $JSONurl = $prefix . $feedID . $suffix . $apiKey;
-        $formattedResults .= '<li>Custom Content: <a href="' . $JSONurl . '" target="_blank">' . $JSONurl . '</a></li>';
-      }
       if($curatedContent) {
         /* http://webapi.publishthis.com/rest/content/curated/feed/{feedId}?token={your api token} */
         $JSONurl = $prefix_curated . $feedID . $suffix_curated . $apiKey;
@@ -936,7 +1044,15 @@ function publish_this_list_feeds() {
         $JSONurl = $prefix_automated . $feedID . $suffix_automated . $apiKey;
         $formattedResults .= '<li>Automated Content: <a href="' . $JSONurl . '" target="_blank">' . $JSONurl . '</a></li>';
       }
-      if( ($customContent + $curatedContent + $automatedContent) == 0) {
+      if($tweetContent) {
+        /* http://webapi.publishthis.com/rest/content/automated/tweets/feed/{feedId}?token={your api token} */
+        $JSONurl = $prefix . $feedID . $suffix . $apiKey;
+        $formattedResults .= '<li>Automated Tweets: <a href="' . $JSONurl . '" target="_blank">' . $JSONurl . '</a></li>';
+      }
+      if($customContent) {
+        /* http://webapi.publishthis.com/rest/feeds/{feedId}/custom-data/?token={your api token} */
+      }
+      if( ($tweetContent + $curatedContent + $automatedContent) == 0) {
         $formattedResults .= '<li>No content feed types have been selected for import for this feed.</li>';
       }
       $formattedResults .='</ul></td>';
