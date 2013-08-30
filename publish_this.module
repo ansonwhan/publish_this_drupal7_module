@@ -739,7 +739,7 @@ function publish_this_import($scheduled = true) {
  * @return: A result set of the feeds
  */
 function publish_this_importJSONitems($JSONurl, $tid) {
-  $tid = utf8_decode($tid);
+  $tid = utf8_encode($tid);
   $filepath = $JSONurl;
   $jsonString = file_get_contents($filepath);
   $jsonString = utf8_decode($jsonString);
@@ -778,65 +778,8 @@ function publish_this_importJSONitems($JSONurl, $tid) {
   {
     $record = $jsonArray[$i];
     if( array_key_exists("contentType", $record) ) {
-      /*if( $record["contentType"] == 'article' ) {
-        $nodeTitle = $record["title"];
-        $nodePublishThisID = $record['docId'];
-        $nodeDate = strtotime($record["publishDate"]);
 
-        $nodeAuthorName = $record["publisher"];
-        $nodeAuthor = publish_this_uidLookup($nodeAuthorName);
-
-        $nodeBody = $record["summary"];
-        $nodeFeaturedImage = $record["imageUrl"];
-        $nodeFeaturedImageCredit = $record["photoCredit"];
-        $nodeLink = $record["url"];
-
-
-        $node = new stdClass();
-        $node->title = $nodeTitle;
-        $node->type = 'article';
-        node_object_prepare($node); // Sets some defaults. Invokes hook_prepare() and hook_node_prepare().
-        $node->language = 'en';
-        $node->uid = $nodeAuthor;
-
-        $node->status = 1; //(1 or 0): published or not
-        if($i == 0) { $node->promote = 0; } //(1 or 0): promoted to front page
-        $node->comment = 0; // 0 = comments disabled, 1 = read only, 2 = read/write
-
-        // Term reference (taxonomy) field
-        //$node->field_product_tid[$node->language][]['tid'] = $form_state['values']['a taxonomy term id'];
-
-        $node->created = $nodeDate;
-
-        $field_langcode = field_language('node', $node, 'body');
-            $node->body[$field_langcode][0]['value']   = $nodeBody;
-            $node->body[$field_langcode][0]['summary'] = text_summary($nodeBody);
-            $node->body[$field_langcode][0]['format']  = filter_default_format();
-
-
-        //$node->field_ptid = $nodePublishThisID;
-        $node = node_submit($node); // Prepare node for saving
-        node_save($node);
-
-        *//* process node begins */
-/*
-        if($i == 0) { $output .='<ol>'; }
-        $output .= '<li><div>
-          <b>Title</b>: ' . $nodeTitle . '<br/>
-          <b>Date</b>: ' . $nodeDate . '<br/>
-          <b>Author</b>: ' . $nodeAuthor . '<br/>
-          <b>UID</b>: ' . $nodePublishThisID . '<br/>
-          <b>Link</b>: ' . $nodeLink . '<br/>
-          <b>Featured Image</b>: ' . $nodeFeaturedImage . '<br/>
-          <b>Image Credit</b>: ' . $nodeFeaturedImageCredit . '<br/>
-          <b>Body</b>: ' . $nodeBody . '<br/>
-          </div></li>';
-        if($i == $itemCount) { $output .='</ol><hr/>'; }
-*/
-        /* process node ends */
-/*
-        $nodeCount++;
-      } *//* end if(contentType == tweet) */
+      //Begin Tweet Content Map
       if( $record["contentType"] == 'tweet' ) {
 
         $nodeTitle = $record["statusId"];
@@ -874,25 +817,10 @@ function publish_this_importJSONitems($JSONurl, $tid) {
         $node = node_submit($node); // Prepare node for saving
         node_save($node);
 
-        /* process node begins */
-/*
-        if($i == 0) { $output .='<ol>'; }
-        $output .= '<li><div>
-          <b>Title</b>: ' . $nodeTitle . '<br/>
-          <b>Date</b>: ' . $nodeDate . '<br/>
-          <b>Author</b>: ' . $nodeAuthor . '<br/>
-          <b>UID</b>: ' . $nodePublishThisID . '<br/>
-          <b>Link</b>: ' . $nodeLink . '<br/>
-          <b>Featured Image</b>: ' . $nodeFeaturedImage . '<br/>
-          <b>Image Credit</b>: ' . $nodeFeaturedImageCredit . '<br/>
-          <b>Body</b>: ' . $nodeBody . '<br/>
-          </div></li>';
-        if($i == $itemCount) { $output .='</ol><hr/>'; }
-*/
-        /* process node ends */
-
         $nodeCount++;
-      } /* end if(contentType == tweet) */
+      } // End Tweet Content Map
+
+      //Begin Automatic Content Map
       if( $record["contentType"] != 'tweet' && !array_key_exists("annotations", $record) && array_key_exists("summary", $record) && array_key_exists("publisher", $record) && array_key_exists("url", $record)) {
 
         $nodeTitle = $record["title"];
@@ -931,6 +859,129 @@ function publish_this_importJSONitems($JSONurl, $tid) {
         $node = node_submit($node); // Prepare node for saving
         node_save($node);
 
+        $nodeCount++;
+      } //End Automatic Content Map
+
+      //Begin Annotated Article Content Map
+      if( $record["contentType"] == 'article' && array_key_exists("annotations", $record)) {
+
+        $nodeTitle = $record["title"];
+        $nodePublishThisID = $record['docId'];
+        $nodeDate = strtotime($record["publishDate"]);
+        if (array_key_exists("publisher", $record)) {
+          $nodeAuthorName = $record["publisher"];
+        } else {
+          $nodeAuthorName = "";
+        }
+        $nodeAuthor = publish_this_uidLookup($nodeAuthorName);
+        $nodeAnnotations = $record["annotations"][0];
+        $nodeBody = $nodeAnnotations["annotation"];
+        if (array_key_exists("summary", $record)){
+          $nodeSummary = $record["summary"];
+        }
+
+        if (array_key_exists("publisher", $record)) {
+          $nodeLink = $record["url"];
+        } else {
+          $nodeLink = "";
+        }
+        if (array_key_exists("imageUrl", $record)) {
+          $nodeImageUrl = $record["imageUrl"];
+        } else {
+          $nodeImageUrl = "";
+        }
+        if (array_key_exists("imageUrlThumbnail", $record)) {
+          $nodeImageThumb = $record["imageUrlThumbnail"];
+        } else {
+          $nodeImageThumb = "";
+        }
+        if (array_key_exists("photoCredit", $record)) {
+          $nodePhotoCred = $record["photoCredit"];
+        } else {
+          $nodePhotoCred = "";
+        }
+
+        $node = new stdClass();
+        $node->title = $nodeTitle;
+        $node->type = 'annotated_article';
+        node_object_prepare($node); // Sets some defaults. Invokes hook_prepare() and hook_node_prepare().
+        $node->language = 'en';
+        $node->uid = $nodeAuthor;
+        $node->field_story_link[LANGUAGE_NONE] = array(
+          0 => array('value' => $nodeLink)
+        );
+        $node->field_image_url[LANGUAGE_NONE] = array(
+          0 => array('value' => $nodeImageUrl)
+        );
+        $node->field_thumbnail_url[LANGUAGE_NONE] = array(
+          0 => array('value' => $nodeImageThumb)
+        );
+        $node->field_photo_credit[LANGUAGE_NONE] = array(
+          0 => array('value' => $nodePhotoCred)
+        );
+
+        $node->status = 1; //(1 or 0): published or not
+        if($i == 0) { $node->promote = 0; } //(1 or 0): promoted to front page
+        $node->comment = 0; // 0 = comments disabled, 1 = read only, 2 = read/write
+
+        // Term reference (taxonomy) field
+        $node->field_category['und'][0] = array('tid' => $tid);
+
+        $node->created = $nodeDate;
+
+        $field_langcode = field_language('node', $node, 'body');
+            $node->body[$field_langcode][0]['value']   = $nodeBody;
+            if ($nodeSummary) {
+              $node->body[$field_langcode][0]['summary'] = $nodeSummary;
+            }
+            else {
+              $node->body[$field_langcode][0]['summary'] = text_summary($nodeBody);
+            }
+            $node->body[$field_langcode][0]['format']  = filter_default_format();
+
+        //$node->field_ptid = $nodePublishThisID;
+        $node = node_submit($node); // Prepare node for saving
+        node_save($node);
+
+        $nodeCount++;
+      } // End Annotated Article Content Map
+
+      //Begin Annotated Text Content Map
+      if( $record["contentType"] == 'text' && array_key_exists("annotations", $record) ) {
+
+        $nodeTitle = $record["title"];
+        $nodePublishThisID = $record['docId'];
+        $nodeDate = strtotime($record["publishDate"]);
+        $nodeAuthorName = "Editor";
+        $nodeAuthor = publish_this_uidLookup($nodeAuthorName);
+        $nodeAnnotations = $record["annotations"][0];
+        $nodeBody = $nodeAnnotations["annotation"];
+
+        $node = new stdClass();
+        $node->title = $nodeTitle;
+        $node->type = 'annotated_text';
+        node_object_prepare($node); // Sets some defaults. Invokes hook_prepare() and hook_node_prepare().
+        $node->language = 'en';
+        $node->uid = $nodeAuthor;
+
+        $node->status = 1; //(1 or 0): published or not
+        if($i == 0) { $node->promote = 0; } //(1 or 0): promoted to front page
+        $node->comment = 0; // 0 = comments disabled, 1 = read only, 2 = read/write
+
+        // Term reference (taxonomy) field
+        $node->field_category['und'][0] = array('tid' => $tid);
+
+        $node->created = $nodeDate;
+
+        $field_langcode = field_language('node', $node, 'body');
+            $node->body[$field_langcode][0]['value']   = $nodeBody;
+            $node->body[$field_langcode][0]['summary'] = text_summary($nodeBody);
+            $node->body[$field_langcode][0]['format']  = filter_default_format();
+
+        //$node->field_ptid = $nodePublishThisID;
+        $node = node_submit($node); // Prepare node for saving
+        node_save($node);
+
         /* process node begins */
 /*
         if($i == 0) { $output .='<ol>'; }
@@ -949,7 +1000,163 @@ function publish_this_importJSONitems($JSONurl, $tid) {
         /* process node ends */
 
         $nodeCount++;
-      } /*end if(contentType == automatic) */
+      } //End Annotated Text Content Map
+
+      //Begin Annotated Image Content Map
+      if( $record["contentType"] == 'photo' && array_key_exists("annotations", $record)) {
+
+        $nodeTitle = $record["title"];
+        $nodePublishThisID = $record['docId'];
+        $nodeDate = strtotime($record["publishDate"]);
+        if (array_key_exists("publisher", $record)) {
+          $nodeAuthorName = $record["publisher"];
+        } else {
+          $nodeAuthorName = "";
+        }
+        $nodeAuthor = publish_this_uidLookup($nodeAuthorName);
+        $nodeAnnotations = $record["annotations"][0];
+        $nodeBody = $nodeAnnotations["annotation"];
+
+        if (array_key_exists("publisher", $record)) {
+          $nodeLink = $record["url"];
+        } else {
+          $nodeLink = "";
+        }
+        if (array_key_exists("imageUrl", $record)) {
+          $nodeImageUrl = $record["imageUrl"];
+        } else {
+          $nodeImageUrl = "";
+        }
+        if (array_key_exists("imageUrlThumbnail", $record)) {
+          $nodeImageThumb = $record["imageUrlThumbnail"];
+        } else {
+          $nodeImageThumb = "";
+        }
+        if (array_key_exists("photoCredit", $record)) {
+          $nodePhotoCred = $record["photoCredit"];
+        } else {
+          $nodePhotoCred = "";
+        }
+
+        $node = new stdClass();
+        $node->title = $nodeTitle;
+        $node->type = 'annotated_image';
+        node_object_prepare($node); // Sets some defaults. Invokes hook_prepare() and hook_node_prepare().
+        $node->language = 'en';
+        $node->uid = $nodeAuthor;
+        $node->field_story_link[LANGUAGE_NONE] = array(
+          0 => array('value' => $nodeLink)
+        );
+        $node->field_image_url[LANGUAGE_NONE] = array(
+          0 => array('value' => $nodeImageUrl)
+        );
+        $node->field_thumbnail_url[LANGUAGE_NONE] = array(
+          0 => array('value' => $nodeImageThumb)
+        );
+        $node->field_photo_credit[LANGUAGE_NONE] = array(
+          0 => array('value' => $nodePhotoCred)
+        );
+
+        $node->status = 1; //(1 or 0): published or not
+        if($i == 0) { $node->promote = 0; } //(1 or 0): promoted to front page
+        $node->comment = 0; // 0 = comments disabled, 1 = read only, 2 = read/write
+
+        // Term reference (taxonomy) field
+        $node->field_category['und'][0] = array('tid' => $tid);
+
+        $node->created = $nodeDate;
+
+        $field_langcode = field_language('node', $node, 'body');
+            $node->body[$field_langcode][0]['value']   = $nodeBody;
+            $node->body[$field_langcode][0]['summary'] = text_summary($nodeBody);
+            $node->body[$field_langcode][0]['format']  = filter_default_format();
+
+        //$node->field_ptid = $nodePublishThisID;
+        $node = node_submit($node); // Prepare node for saving
+        node_save($node);
+
+        $nodeCount++;
+      } // End Annotated Image Content Map
+      
+      //Begin Annotated Video Content Map
+      if( $record["contentType"] == 'video' && array_key_exists("annotations", $record) && array_key_exists("embed", $record)) {
+
+        $nodeTitle = $record["title"];
+        $nodePublishThisID = $record['docId'];
+        $nodeDate = strtotime($record["publishDate"]);
+        if (array_key_exists("publisher", $record)) {
+          $nodeAuthorName = $record["publisher"];
+        } else {
+          $nodeAuthorName = "";
+        }
+        $nodeAuthor = publish_this_uidLookup($nodeAuthorName);
+        $nodeAnnotations = $record["annotations"][0];
+        $nodeBody = $nodeAnnotations["annotation"];
+        $nodeEmbed = $record["embed"];
+
+        if (array_key_exists("publisher", $record)) {
+          $nodeLink = $record["url"];
+        } else {
+          $nodeLink = "";
+        }
+        if (array_key_exists("imageUrl", $record)) {
+          $nodeImageUrl = $record["imageUrl"];
+        } else {
+          $nodeImageUrl = "";
+        }
+        if (array_key_exists("imageUrlThumbnail", $record)) {
+          $nodeImageThumb = $record["imageUrlThumbnail"];
+        } else {
+          $nodeImageThumb = "";
+        }
+        if (array_key_exists("photoCredit", $record)) {
+          $nodePhotoCred = $record["photoCredit"];
+        } else {
+          $nodePhotoCred = "";
+        }
+
+        $node = new stdClass();
+        $node->title = $nodeTitle;
+        $node->type = 'annotated_video';
+        node_object_prepare($node); // Sets some defaults. Invokes hook_prepare() and hook_node_prepare().
+        $node->language = 'en';
+        $node->uid = $nodeAuthor;
+        $node->field_story_link[LANGUAGE_NONE] = array(
+          0 => array('value' => $nodeLink)
+        );
+        $node->field_image_url[LANGUAGE_NONE] = array(
+          0 => array('value' => $nodeImageUrl)
+        );
+        $node->field_thumbnail_url[LANGUAGE_NONE] = array(
+          0 => array('value' => $nodeImageThumb)
+        );
+        $node->field_photo_credit[LANGUAGE_NONE] = array(
+          0 => array('value' => $nodePhotoCred)
+        );
+        $node->field_video_link[LANGUAGE_NONE] = array(
+          0 => array('value' => $nodeEmbed)
+        );
+
+        $node->status = 1; //(1 or 0): published or not
+        if($i == 0) { $node->promote = 0; } //(1 or 0): promoted to front page
+        $node->comment = 0; // 0 = comments disabled, 1 = read only, 2 = read/write
+
+        // Term reference (taxonomy) field
+        $node->field_category['und'][0] = array('tid' => $tid);
+
+        $node->created = $nodeDate;
+
+        $field_langcode = field_language('node', $node, 'body');
+            $node->body[$field_langcode][0]['value']   = $nodeBody;
+            $node->body[$field_langcode][0]['summary'] = text_summary($nodeBody);
+            $node->body[$field_langcode][0]['format']  = filter_default_format();
+
+        //$node->field_ptid = $nodePublishThisID;
+        $node = node_submit($node); // Prepare node for saving
+        node_save($node);
+
+        $nodeCount++;
+      } // End Annotated Video Content Map
     } /* end if(array_key_exists) */
   } /* end for loop */
 
